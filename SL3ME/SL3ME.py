@@ -1,6 +1,4 @@
-import numpy as np
-import pdb
-
+# Forked from https://github.com/ldwillia/SL3ME
 
 def calculate_SLME( material_eV_for_absorbance_data, material_absorbance_data,
 		material_direct_allowed_gap,  material_indirect_gap,
