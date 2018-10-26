@@ -2,10 +2,18 @@
 # Copyright (c) Marnik Bercx, University of Antwerp
 # Distributed under the terms of the MIT License
 
+import os
+
 import numpy as np
+import matplotlib as plt
+
+import scipy.constants as constants
+
+from scipy.integrate import simps
+from scipy.optimize import minimize
 
 """
-Core classes of the SL3ME package.
+Core classes and methods of the SL3ME package.
 
 """
 
@@ -17,51 +25,73 @@ __email__ = "marnik.bercx@uantwerpen.be"
 __date__ = "May 2018"
 
 
-def SLME(material_eV_for_absorbance_data,
+def slme(material_energy_for_absorbance_data,
          material_absorbance_data,
          material_direct_allowed_gap,
-         material_indirect_gap, thickness=50E-6, T=293.15,
+         material_indirect_gap, thickness=50E-6, temperature=293.15,
          absorbance_in_inverse_centimeters=False,
          cut_off_absorbance_below_direct_allowed_gap=True,
          plot_current_voltage=False):
-    ##### IMPORTANT NOTES:
-    # 1) Material calculated absorbance is assumed to be in m^-1, not cm^-1!
-    # (Most sources will provide absorbance in cm^-1, so be careful.)
-    #
-    # 2) The default is to remove absorbance below the direct allowed gap.
-    # This is for dealing with broadening applied in DFT absorbance
-    # calculations. Probably not desired for experimental data.
-    #
-    # 3) We can calculate at different temperatures if we want to, but 25 C /
-    # 293.15 K is the standard temperature assumed if not specified
-    #
-    # 4) If absorbance is in cm^-1, multiply values by 100 to match units
-    # assumed in code
+    """
+    Calculate the
 
+    IMPORTANT NOTES:
+    1) Material calculated absorbance is assumed to be in m^-1, not cm^-1!
+        (Most sources will provide absorbance in cm^-1, so be careful.)
+
+    2) The default is to remove absorbance below the direct allowed gap.
+        This is for dealing with broadening applied in DFT absorbance
+        calculations. Probably not desired for experimental data.
+
+    3) We can calculate at different temperatures if we want to, but 25 C /
+        293.15 K is the standard temperature assumed if not specified
+
+    4) If absorbance is in cm^-1, multiply values by 100 to match units
+        assumed in code
+
+    Args:
+        material_energy_for_absorbance_data:
+        material_absorbance_data:
+        material_direct_allowed_gap:
+        material_indirect_gap:
+        thickness:
+        temperature:
+        absorbance_in_inverse_centimeters:
+        cut_off_absorbance_below_direct_allowed_gap:
+        plot_current_voltage:
+
+    Returns:
+        The calculated maximum efficiency.
+
+    """
+
+    # Defining constants for tidy equations
+    c = constants.c  # speed of light, m/s
+    h = constants.h  # Planck's constant J*s (W)
+    h_e = constants.h / constants.e  # Planck's constant eV*s
+    k = constants.k  # Boltzmann's constant J/K
+    k_e = constants.k / constants.e  # Boltzmann's constant eV/K
+    e = constants.e  # Coulomb
+
+    # Make sure the absorption coefficient has the right units (m^{-1})
     if absorbance_in_inverse_centimeters:
         material_absorbance_data = material_absorbance_data * 100
 
-    # For flat plate solar panels, we want the "Global Tilt" spectra,
-    # this file is assumed to be in the directory
-    try:
-        solar_spectra_wavelength, solar_spectra_irradiance = np.loadtxt(
-            "am1.5G.dat", usecols=[0, 1], unpack=True, skiprows=2
-        )
-    except OSError:
-        print('Could not locate am1.5G.dat datafile. Please place this file '
-              'in the local directory.')
-        sys.exit()
-    solar_spectra_wavelength_meters = solar_spectra_wavelength * 10 ** -9
+    # Load the Air Mass 1.5 Global tilt solar spectrum
+    solar_spectrum_data_file = os.path.join(
+        os.path.join(os.path.dirname(__file__), os.pardir),
+        "data",
+        "am1.5G.dat"
+    )
 
-    c = 299792458  # speed of light, m/s
-    h = 6.62607004081E-34  # Planck's constant J*s (W)
-    h_eV = 4.135667516E-15  # Planck's constant eV*s
-    k = 1.3806485279E-23  # Boltzmann's constant J/K
-    k_eV = 8.617330350E-5  # Boltzmann's constant eV/K
-    e = 1.602176620898E-19  # Coulomb
+    solar_spectra_wavelength, solar_spectra_irradiance = np.loadtxt(
+        solar_spectrum_data_file, usecols=[0, 1], unpack=True, skiprows=2
+    )
+
+    solar_spectra_wavelength_meters = solar_spectra_wavelength * 1e-9
 
     delta = material_direct_allowed_gap - material_indirect_gap
-    fr = np.exp(-delta / (k_eV * T))
+    fr = np.exp(-delta / (k_e * temperature))
 
     # need to convert solar irradiance from Power/m**2(nm) into
     # photon#/s*m**2(nm) power is Watt, which is Joule / s
@@ -70,16 +100,16 @@ def SLME(material_eV_for_absorbance_data,
     solar_spectra_photon_flux = solar_spectra_irradiance * (
         solar_spectra_wavelength_meters / (h * c))
 
-    from scipy.integrate import simps
     ### Calculation of total solar power incoming
-    P_in = simps(solar_spectra_irradiance, solar_spectra_wavelength)
+    power_in = simps(solar_spectra_irradiance, solar_spectra_wavelength)
 
     ### calculation of blackbody irradiance spectra
     ## units of W/(m**3), different than solar_spectra_irradiance!!! (This
     # is intentional, it is for convenience)
-    blackbody_irradiance = (2.0 * h * c ** 2 / (
-        solar_spectra_wavelength_meters ** 5)) * (1.0 / (
-        (np.exp(h * c / (solar_spectra_wavelength_meters * k * T))) - 1.0))
+    blackbody_irradiance = (2.0 * h * c ** 2 /
+                            (solar_spectra_wavelength_meters ** 5)) \
+                           * (1.0 / ((np.exp(h * c / (
+        solar_spectra_wavelength_meters * k * temperature))) - 1.0))
 
     # I've removed a pi in the equation above - Marnik Bercx
 
@@ -88,8 +118,8 @@ def SLME(material_eV_for_absorbance_data,
         solar_spectra_wavelength_meters / (h * c))
 
     ## units of nm
-    material_wavelength_for_absorbance_data = ((c * h_eV) / (
-        material_eV_for_absorbance_data + 0.00000001)) * 10 ** 9
+    material_wavelength_for_absorbance_data = ((c * h_e) / (
+        material_energy_for_absorbance_data + 0.00000001)) * 10 ** 9
 
     ### absorbance interpolation onto each solar spectrum wavelength
     from scipy.interpolate import interp1d
@@ -109,7 +139,7 @@ def SLME(material_eV_for_absorbance_data,
         # with VASPs broadening of the calculated absorption data
 
 
-        if solar_spectra_wavelength[i] < 1e9 * ((c * h_eV) /
+        if solar_spectra_wavelength[i] < 1e9 * ((c * h_e) /
                                                     material_direct_allowed_gap) \
                 or cut_off_absorbance_below_direct_allowed_gap == False:
             material_interpolated_absorbance[
@@ -124,8 +154,8 @@ def SLME(material_eV_for_absorbance_data,
 
     ###  Numerically integrating irradiance over wavelength array
     ## Note: elementary charge, not math e!  ## units of A/m**2   W/(V*m**2)
-    J_0_r = e * pi * simps(blackbody_photon_flux * absorbed_by_wavelength,
-                           solar_spectra_wavelength_meters)
+    J_0_r = e * np.pi * simps(blackbody_photon_flux * absorbed_by_wavelength,
+                              solar_spectra_wavelength_meters)
 
     J_0 = J_0_r / fr
 
@@ -140,14 +170,12 @@ def SLME(material_eV_for_absorbance_data,
     #   #Bercx chapter and papers have the correct formula (well,
     #   the correction on one paper)
     def J(V):
-        J = J_sc - J_0 * (np.exp(e * V / (k * T)) - 1.0)
+        J = J_sc - J_0 * (np.exp(e * V / (k * temperature)) - 1.0)
         return J
 
     def power(V):
         p = J(V) * V
         return p
-
-    from scipy.optimize import minimize
 
     def neg_power(V):  # Minimizing the negative of power to optimize power
         return -power(V)
@@ -164,13 +192,13 @@ def SLME(material_eV_for_absorbance_data,
     V_Pmax = float(results.x)
     P_m = power(V_Pmax)
 
-    efficiency = P_m / P_in
+    efficiency = P_m / power_in
 
     # This segment isn't needed for functionality at all, but can display a
     # plot showing how the maximization of power by choosing the optimal
     # voltage value works
     if plot_current_voltage:
-        V = linspace(0, 2, 200)
+        V = np.linspace(0, 2, 200)
         plt.plot(V, J(V))
         plt.plot(V, power(V), linestyle='--')
         plt.show()

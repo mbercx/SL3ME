@@ -116,7 +116,6 @@ def calculate_SLME( material_eV_for_absorbance_data, material_absorbance_data,
 
     return  efficiency
 
-
 ###########################################
 
 if __name__ == '__main__':  # This condition is only true if you are executing this file. If you call this file as a library, this condition will be False
