@@ -149,8 +149,6 @@ def slme(material_energy_for_absorbance_data,
     absorbed_by_wavelength = 1.0 - np.exp(-2.0 *
                                           material_interpolated_absorbance
                                           * thickness)
-    # np.ones(material_interpolated_absorbance.size)
-    print(str(type(absorbed_by_wavelength)))
 
     ###  Numerically integrating irradiance over wavelength array
     ## Note: elementary charge, not math e!  ## units of A/m**2   W/(V*m**2)
@@ -176,6 +174,8 @@ def slme(material_energy_for_absorbance_data,
     def power(V):
         p = J(V) * V
         return p
+
+
 
     def neg_power(V):  # Minimizing the negative of power to optimize power
         return -power(V)
