@@ -27,7 +27,7 @@ def main():
     """
     pass
 
-@click.command(context_settings=CONTEXT_SETTINGS)
+@main.command(context_settings=CONTEXT_SETTINGS)
 @click.argument("data_file", nargs=1)
 @click.option("--direct_band_gap", "-D", default=0.0)
 @click.option("--indirect_band_gap", "-I", default=0.0)
