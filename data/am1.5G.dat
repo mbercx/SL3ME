@@ -1,5 +1,5 @@
-
-
+Air Mass 1.5 Global tilt solar spectrum data, taken from https://www.nrel.gov/grid/solar-resource/assets/data/astmg173.xls
+By using the AM1.5G solar spectrum data, you agree to the NREL data disclaimer: https://www.nrel.gov/disclaimer.html
 280.0	4.7309E-23
 280.5	1.2307E-21
 281.0	5.6895E-21
