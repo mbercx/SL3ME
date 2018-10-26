@@ -3,6 +3,7 @@
 # Distributed under the terms of the MIT License
 
 import os
+import pdb
 
 import numpy as np
 import matplotlib as plt
@@ -175,24 +176,17 @@ def slme(material_energy_for_absorbance_data,
         p = J(V) * V
         return p
 
+    # A more primitive, but perfectly robust way of getting a reasonable
+    # estimate for the maximum power.
+    test_voltage = 0
+    voltage_step = 0.001
+    while power(test_voltage+voltage_step) > power(test_voltage):
+        test_voltage += voltage_step
 
+    max_power = power(test_voltage)
 
-    def neg_power(V):  # Minimizing the negative of power to optimize power
-        return -power(V)
-
-    results = minimize(neg_power, x0=np.array([0.0000001]))
-    # passing a function as a variable, preconditioning at
-    # V=0, since this is a smooth function results.x are the inputs as an
-    # array that give the highest value of Power
-
-    # I've changed the preconditioning to a very small value, as per Kamal
-    # Choudhary's suggestion - Marnik Bercx
-    # TODO figure out how that minimize method works
-
-    V_Pmax = float(results.x)
-    P_m = power(V_Pmax)
-
-    efficiency = P_m / power_in
+    # Calculate the maximized efficience
+    efficiency = max_power / power_in
 
     # This segment isn't needed for functionality at all, but can display a
     # plot showing how the maximization of power by choosing the optimal
