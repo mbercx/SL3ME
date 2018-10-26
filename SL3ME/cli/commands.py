@@ -47,4 +47,4 @@ def calculate_slme(data_file, direct_band_gap, indirect_band_gap, thickness,
         temperature=temperature
     )
 
-    print("The calculated efficiency = " + str(efficiency*100) + " %")
+    print("Calculated efficiency = " + str(efficiency*100) + " %")
