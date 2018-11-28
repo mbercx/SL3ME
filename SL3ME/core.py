@@ -1,5 +1,4 @@
 # Encoding: UTF-8
-# Copyright (c) Marnik Bercx, University of Antwerp
 # Distributed under the terms of the GNU License
 # Forked and adjusted from https://github.com/ldwillia/SL3ME
 
@@ -24,6 +23,148 @@ __version__ = "0.1"
 __maintainer__ = "Marnik Bercx"
 __email__ = "marnik.bercx@uantwerpen.be"
 __date__ = "Oct 2018"
+
+def calculate_SQ(bandgap_ev, temperature=300, fr=1,
+                 plot_current_voltage=False):
+    """
+
+    Args:
+        bandgap_ev:
+        temperature:
+
+    Returns:
+
+    """
+
+    # Defining constants for tidy equations
+    c = constants.c  # speed of light, m/s
+    h = constants.h  # Planck's constant J*s (W)
+    h_e = constants.h / constants.e  # Planck's constant eV*s
+    k = constants.k  # Boltzmann's constant J/K
+    k_e = constants.k / constants.e  # Boltzmann's constant eV/K
+    e = constants.e  # Coulomb
+
+    # Load the Air Mass 1.5 Global tilt solar spectrum
+    solar_spectrum_data_file = os.path.join(
+        os.path.join(os.path.dirname(__file__), os.pardir),
+        "data",
+        "am1.5G.dat"
+    )
+
+    solar_spectra_wavelength, solar_spectra_irradiance = np.loadtxt(
+        solar_spectrum_data_file, usecols=[0, 1], unpack=True, skiprows=2
+    )
+
+    solar_spectra_wavelength_meters = solar_spectra_wavelength * 1e-9
+
+    # need to convert solar irradiance from Power/m**2(nm) into
+    # photon#/s*m**2(nm) power is Watt, which is Joule / s
+    # E = hc/wavelength
+    # at each wavelength, Power * (wavelength(m)/(h(Js)*c(m/s))) = ph#/s
+    solar_spectra_photon_flux = solar_spectra_irradiance * (
+        solar_spectra_wavelength_meters / (h * c))
+
+    ### Calculation of total solar power incoming
+    power_in = simps(solar_spectra_irradiance, solar_spectra_wavelength)
+
+    ### calculation of blackbody irradiance spectra
+    ## units of W/(m**3), different than solar_spectra_irradiance!!! (This
+    # is intentional, it is for convenience)
+    blackbody_irradiance = (2.0 * h * c ** 2 /
+                            (solar_spectra_wavelength_meters ** 5)) \
+                           * (1.0 / ((np.exp(h * c / (
+        solar_spectra_wavelength_meters * k * temperature))) - 1.0))
+
+    # I've removed a pi in the equation above - Marnik Bercx
+
+    ## now to convert the irradiance from Power/m**2(m) into photon#/s*m**2(m)
+    blackbody_photon_flux = blackbody_irradiance * (
+        solar_spectra_wavelength_meters / (h * c))
+
+    ### absorbance interpolation onto each solar spectrum wavelength
+    from numpy import interp
+
+    # Get the bandgap in wavelength in meters
+    bandgap_wavelength = h_e * c / bandgap_ev
+
+    # Only take the part of the wavelength-dependent solar spectrum and
+    # blackbody spectrum below the bandgap wavelength
+    bandgap_index = np.searchsorted(solar_spectra_wavelength_meters, bandgap_wavelength)
+
+    bandgap_irradiance = interp(
+        np.array([bandgap_wavelength,]), solar_spectra_wavelength_meters,
+        solar_spectra_photon_flux)
+
+    bandgap_blackbody = (2.0 * h * c ** 2 /
+                            (bandgap_wavelength ** 5)) \
+                           * (1.0 / ((np.exp(h * c / (
+        bandgap_wavelength * k * temperature))) - 1.0)) * (
+        bandgap_wavelength / (h * c))
+
+    integration_wavelength = np.concatenate(
+        (solar_spectra_wavelength_meters[:bandgap_index],
+         np.array([bandgap_wavelength,])),
+        axis=0
+    )
+
+    integration_solar_flux = np.concatenate(
+        (solar_spectra_photon_flux[:bandgap_index],
+            bandgap_irradiance),
+        axis=0
+    )
+
+    integration_blackbody = np.concatenate(
+        (blackbody_photon_flux[:bandgap_index], np.array([bandgap_blackbody])),
+         axis=0
+    )
+
+    ###  Numerically integrating irradiance over wavelength array
+    ## Note: elementary charge, not math e!  ## units of A/m**2   W/(V*m**2)
+    J_0_r = e * np.pi * simps(integration_blackbody,
+                              integration_wavelength)
+
+    J_0 = J_0_r / fr
+
+    ###  Numerically integrating irradiance over wavelength array
+    ## elementary charge, not math e!  ### units of A/m**2   W/(V*m**2)
+    J_sc = e * simps(integration_solar_flux*1e9, integration_wavelength)
+
+    #    J[i] = J_sc - J_0*(1 - exp( e*V[i]/(k*T) ) )
+    #   #This formula from the original paper has a typo!!
+    #    J[i] = J_sc - J_0*(exp( e*V[i]/(k*T) ) - 1)
+    #   #Bercx chapter and papers have the correct formula (well,
+    #   the correction on one paper)
+    def J(V):
+        J = J_sc - J_0 * (np.exp(e * V / (k * temperature)) - 1.0)
+        return J
+
+    def power(V):
+        p = J(V) * V
+        return p
+
+    # A more primitive, but perfectly robust way of getting a reasonable
+    # estimate for the maximum power.
+    test_voltage = 0
+    voltage_step = 0.001
+    while power(test_voltage+voltage_step) > power(test_voltage):
+        test_voltage += voltage_step
+
+    max_power = power(test_voltage)
+
+    # Calculate the maximized efficience
+    efficiency = max_power / power_in
+
+    # This segment isn't needed for functionality at all, but can display a
+    # plot showing how the maximization of power by choosing the optimal
+    # voltage value works
+    if plot_current_voltage:
+        V = np.linspace(0, 2, 200)
+        plt.plot(V, J(V))
+        plt.plot(V, power(V), linestyle='--')
+        plt.show()
+        print(max_power)
+
+    return efficiency
 
 
 def slme(material_energy_for_absorbance_data,
@@ -196,6 +337,6 @@ def slme(material_energy_for_absorbance_data,
         plt.plot(V, J(V))
         plt.plot(V, power(V), linestyle='--')
         plt.show()
-        print(power(V_Pmax))
+        print(max_power)
 
     return efficiency
